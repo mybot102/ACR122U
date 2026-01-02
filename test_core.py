@@ -64,7 +64,6 @@ def test_shamir_secret_sharing():
     recovered_key = crypto.recover_key(shares[:3])
     assert recovered_key == key, "Recovery failed"
     print(f"  ✓ Recovered key: {recovered_key.hex()[:16]}...")
-    assert recovered_key == key
     print("  ✓ Key matches original")
     
     # Test with different 3 shares

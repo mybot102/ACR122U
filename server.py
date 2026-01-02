@@ -13,17 +13,14 @@ This system provides:
 
 import asyncio
 import json
-import secrets
 import struct
-import hashlib
 from typing import Optional, Dict, List, Tuple
 from aiohttp import web
 import aiohttp
+import random
 
 from Crypto.Cipher import AES
-from Crypto.Protocol.KDF import PBKDF2
 from Crypto.Random import get_random_bytes
-import random
 
 from smartcard.System import readers
 from smartcard.util import toHexString, toBytes
