@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-NFC Mnemonic Backup System - Backend Server
+NFC 助记词备份系统 - 后端服务器
 
-This system provides:
-- AES encryption of mnemonic phrases
-- Shamir Secret Sharing (3-of-5) for key splitting
-- NFC card (NTAG216) read/write using ACR122U reader
-- WebSocket server for frontend communication (127.0.0.1 only)
-- Memory-only storage (no disk persistence)
-- Card identification using internal data (CardID + Counter + Challenge)
+本系统提供：
+- 助记词的 AES 加密
+- Shamir 秘密共享（3-of-5）密钥分片
+- 使用 ACR122U 读卡器读写 NFC 卡（NTAG216）
+- 前端通信的 WebSocket 服务器（仅 127.0.0.1）
+- 仅内存存储（不持久化到磁盘）
+- 使用内部数据（CardID + Counter + Challenge）识别卡片
 """
 
 import asyncio
@@ -28,14 +28,14 @@ from smartcard.Exceptions import NoCardException, CardConnectionException
 
 
 class ShamirSecretSharing:
-    """Simple Shamir Secret Sharing implementation"""
+    """简单的 Shamir 秘密共享实现"""
     
-    # Large prime for finite field arithmetic (256-bit prime)
+    # 用于有限域算术的大素数（256位素数）
     PRIME = 2**256 - 189
     
     @staticmethod
     def _eval_at(poly: List[int], x: int, prime: int) -> int:
-        """Evaluate polynomial at x using Horner's method"""
+        """使用 Horner 方法在 x 处计算多项式"""
         accum = 0
         for coeff in reversed(poly):
             accum = (accum * x + coeff) % prime
@@ -43,7 +43,7 @@ class ShamirSecretSharing:
     
     @staticmethod
     def _lagrange_interpolate(x: int, x_s: List[int], y_s: List[int], prime: int) -> int:
-        """Lagrange interpolation at x"""
+        """在 x 处进行拉格朗日插值"""
         k = len(x_s)
         result = 0
         
@@ -56,10 +56,10 @@ class ShamirSecretSharing:
                     numerator = (numerator * (x - x_s[j])) % prime
                     denominator = (denominator * (x_s[i] - x_s[j])) % prime
             
-            # Calculate modular inverse of denominator
+            # 计算分母的模逆
             denominator_inv = pow(denominator, prime - 2, prime)
             
-            # Add this term to result
+            # 将此项添加到结果
             lagrange_coeff = (numerator * denominator_inv) % prime
             result = (result + y_s[i] * lagrange_coeff) % prime
         
@@ -67,31 +67,31 @@ class ShamirSecretSharing:
     
     @classmethod
     def split_secret(cls, secret: bytes, threshold: int, num_shares: int) -> List[str]:
-        """Split secret into shares"""
+        """将秘密分片"""
         if threshold > num_shares:
-            raise ValueError("Threshold cannot be greater than number of shares")
+            raise ValueError("阈值不能大于分片数量")
         if threshold < 2:
-            raise ValueError("Threshold must be at least 2")
+            raise ValueError("阈值必须至少为 2")
         
-        # Convert secret to integer
+        # 将秘密转换为整数
         secret_int = int.from_bytes(secret, byteorder='big')
         
         if secret_int >= cls.PRIME:
-            raise ValueError("Secret is too large")
+            raise ValueError("秘密太大")
         
-        # Generate random polynomial coefficients
-        # polynomial: a0 + a1*x + a2*x^2 + ... + a(t-1)*x^(t-1)
-        # where a0 = secret
+        # 生成随机多项式系数
+        # 多项式: a0 + a1*x + a2*x^2 + ... + a(t-1)*x^(t-1)
+        # 其中 a0 = secret
         poly = [secret_int]
         for _ in range(threshold - 1):
             coeff = random.SystemRandom().randrange(1, cls.PRIME)
             poly.append(coeff)
         
-        # Generate shares by evaluating polynomial at x = 1, 2, 3, ..., num_shares
+        # 通过在 x = 1, 2, 3, ..., num_shares 处计算多项式来生成分片
         shares = []
         for x in range(1, num_shares + 1):
             y = cls._eval_at(poly, x, cls.PRIME)
-            # Format: x:y (both in hex)
+            # 格式: x:y (都是十六进制)
             share_str = f"{x:02x}:{y:064x}"
             shares.append(share_str)
         
@@ -99,18 +99,18 @@ class ShamirSecretSharing:
     
     @classmethod
     def recover_secret(cls, shares: List[str]) -> bytes:
-        """Recover secret from shares"""
+        """从分片中恢复秘密"""
         if len(shares) < 2:
-            raise ValueError("At least 2 shares required")
+            raise ValueError("至少需要 2 个分片")
         
-        # Parse shares
+        # 解析分片
         x_s = []
         y_s = []
         
         for share in shares:
             parts = share.split(':')
             if len(parts) != 2:
-                raise ValueError("Invalid share format")
+                raise ValueError("无效的分片格式")
             
             x = int(parts[0], 16)
             y = int(parts[1], 16)
@@ -118,17 +118,17 @@ class ShamirSecretSharing:
             x_s.append(x)
             y_s.append(y)
         
-        # Recover secret using Lagrange interpolation at x=0
+        # 使用拉格朗日插值在 x=0 处恢复秘密
         secret_int = cls._lagrange_interpolate(0, x_s, y_s, cls.PRIME)
         
-        # Convert back to bytes (32 bytes = 256 bits)
+        # 转换回字节（32 字节 = 256 位）
         secret = secret_int.to_bytes(32, byteorder='big')
         
         return secret
 
 
 class InMemoryState:
-    """Memory-only state storage - cleared on restart or disconnect"""
+    """仅内存状态存储 - 重启或断开连接时清除"""
     
     def __init__(self):
         self.mnemonic: Optional[str] = None
@@ -140,7 +140,7 @@ class InMemoryState:
         self.recovered_mnemonic: Optional[str] = None
     
     def clear(self):
-        """Clear all sensitive data from memory"""
+        """从内存中清除所有敏感数据"""
         self.mnemonic = None
         self.encrypted_blob = None
         self.aes_key = None
@@ -151,26 +151,26 @@ class InMemoryState:
 
 
 class NFCCardManager:
-    """Manages NFC card operations using ACR122U reader"""
+    """使用 ACR122U 读卡器管理 NFC 卡操作"""
     
-    # NTAG216 specifications
-    NTAG216_PAGES = 231  # Total user pages (4-230)
-    NTAG216_PAGE_SIZE = 4  # bytes per page
-    USER_START_PAGE = 4  # Start of user memory
+    # NTAG216 规格
+    NTAG216_PAGES = 231  # 总用户页数（4-230）
+    NTAG216_PAGE_SIZE = 4  # 每页字节数
+    USER_START_PAGE = 4  # 用户内存起始页
     
-    # Our data structure on card (starting at page 4):
-    # Pages 4-7: CardID (16 bytes)
-    # Pages 8-9: Counter (8 bytes)
-    # Pages 10-17: Challenge (32 bytes)
-    # Pages 18-85: Encrypted Blob (272 bytes max - enough for 24-word mnemonic)
-    # Pages 86-105: Share data (80 bytes max)
+    # 卡上的数据结构（从第 4 页开始）：
+    # 第 4-7 页：CardID（16 字节）
+    # 第 8-9 页：Counter（8 字节）
+    # 第 10-17 页：Challenge（32 字节）
+    # 第 18-85 页：加密数据块（最大 272 字节 - 足够存储 24 词助记词）
+    # 第 86-105 页：分片数据（最大 80 字节）
     
     def __init__(self):
         self.connection = None
         self.current_card_signature: Optional[Dict] = None
     
     def connect(self) -> bool:
-        """Connect to ACR122U reader and card"""
+        """连接到 ACR122U 读卡器和卡片"""
         try:
             reader_list = readers()
             if not reader_list:
@@ -184,7 +184,7 @@ class NFCCardManager:
             return False
     
     def disconnect(self):
-        """Disconnect from card"""
+        """断开与卡片的连接"""
         if self.connection:
             try:
                 self.connection.disconnect()
@@ -194,28 +194,28 @@ class NFCCardManager:
         self.current_card_signature = None
     
     def read_page(self, page: int) -> Optional[bytes]:
-        """Read a single page (4 bytes) from NTAG216"""
+        """从 NTAG216 读取单个页（4 字节）"""
         if not self.connection:
             return None
         
         try:
-            # APDU command to read 16 bytes (4 pages) starting at page
+            # APDU 命令从指定页开始读取 16 字节（4 页）
             apdu = [0xFF, 0xB0, 0x00, page, 0x10]
             data, sw1, sw2 = self.connection.transmit(apdu)
             
             if sw1 == 0x90 and sw2 == 0x00:
-                return bytes(data[:4])  # Return only first page
+                return bytes(data[:4])  # 仅返回第一页
             return None
         except Exception:
             return None
     
     def write_page(self, page: int, data: bytes) -> bool:
-        """Write a single page (4 bytes) to NTAG216"""
+        """向 NTAG216 写入单个页（4 字节）"""
         if not self.connection or len(data) != 4:
             return False
         
         try:
-            # APDU command to write 4 bytes to page
+            # APDU 命令向页写入 4 字节
             apdu = [0xFF, 0xD6, 0x00, page, 0x04] + list(data)
             data_resp, sw1, sw2 = self.connection.transmit(apdu)
             return sw1 == 0x90 and sw2 == 0x00
@@ -223,7 +223,7 @@ class NFCCardManager:
             return False
     
     def read_multiple_pages(self, start_page: int, num_pages: int) -> Optional[bytes]:
-        """Read multiple pages from card"""
+        """从卡片读取多个页"""
         result = bytearray()
         for i in range(num_pages):
             page_data = self.read_page(start_page + i)
@@ -233,8 +233,8 @@ class NFCCardManager:
         return bytes(result)
     
     def write_multiple_pages(self, start_page: int, data: bytes) -> bool:
-        """Write multiple pages to card"""
-        num_pages = (len(data) + 3) // 4  # Round up
+        """向卡片写入多个页"""
+        num_pages = (len(data) + 3) // 4  # 向上取整
         padded_data = data + b'\x00' * (num_pages * 4 - len(data))
         
         for i in range(num_pages):
@@ -244,22 +244,22 @@ class NFCCardManager:
         return True
     
     def read_card_signature(self) -> Optional[Dict]:
-        """Read card identification data (CardID + Counter + Challenge)"""
+        """读取卡片识别数据（CardID + Counter + Challenge）"""
         if not self.connection:
             return None
         
         try:
-            # Read CardID (16 bytes, pages 4-7)
+            # 读取 CardID（16 字节，第 4-7 页）
             card_id = self.read_multiple_pages(4, 4)
             if not card_id:
                 return None
             
-            # Read Counter (8 bytes, pages 8-9)
+            # 读取 Counter（8 字节，第 8-9 页）
             counter = self.read_multiple_pages(8, 2)
             if not counter:
                 return None
             
-            # Read Challenge (32 bytes, pages 10-17)
+            # 读取 Challenge（32 字节，第 10-17 页）
             challenge = self.read_multiple_pages(10, 8)
             if not challenge:
                 return None
@@ -273,18 +273,18 @@ class NFCCardManager:
             return None
     
     def is_card_changed(self) -> Tuple[bool, Optional[Dict]]:
-        """Check if card has been changed by comparing signatures"""
+        """通过比较签名检查卡片是否已更换"""
         new_signature = self.read_card_signature()
         
         if new_signature is None:
             return True, None
         
         if self.current_card_signature is None:
-            # First card read
+            # 第一次读卡
             self.current_card_signature = new_signature
             return False, new_signature
         
-        # Compare signatures
+        # 比较签名
         changed = (new_signature['card_id'] != self.current_card_signature['card_id'] or
                   new_signature['counter'] != self.current_card_signature['counter'] or
                   new_signature['challenge'] != self.current_card_signature['challenge'])
@@ -297,32 +297,32 @@ class NFCCardManager:
     
     def write_card_data(self, card_number: int, encrypted_blob: bytes, 
                        share: str, card_id: bytes, challenge: bytes) -> bool:
-        """Write all data to NFC card"""
+        """将所有数据写入 NFC 卡"""
         if not self.connection:
             return False
         
         try:
-            # Generate counter (current timestamp)
+            # 生成计数器（当前时间戳）
             counter = struct.pack('>Q', int(asyncio.get_event_loop().time() * 1000))
             
-            # Write CardID (pages 4-7)
+            # 写入 CardID（第 4-7 页）
             if not self.write_multiple_pages(4, card_id[:16]):
                 return False
             
-            # Write Counter (pages 8-9)
+            # 写入 Counter（第 8-9 页）
             if not self.write_multiple_pages(8, counter):
                 return False
             
-            # Write Challenge (pages 10-17)
+            # 写入 Challenge（第 10-17 页）
             if not self.write_multiple_pages(10, challenge[:32]):
                 return False
             
-            # Write Encrypted Blob (pages 18-85, max 272 bytes)
+            # 写入加密数据块（第 18-85 页，最大 272 字节）
             blob_to_write = encrypted_blob[:272]
             if not self.write_multiple_pages(18, blob_to_write):
                 return False
             
-            # Write Share (pages 86-105, max 80 bytes)
+            # 写入分片（第 86-105 页，最大 80 字节）
             share_bytes = share.encode('utf-8')[:80]
             if not self.write_multiple_pages(86, share_bytes):
                 return False
@@ -332,27 +332,27 @@ class NFCCardManager:
             return False
     
     def read_card_data(self) -> Optional[Dict]:
-        """Read all data from NFC card"""
+        """从 NFC 卡读取所有数据"""
         if not self.connection:
             return None
         
         try:
-            # Read signature first
+            # 首先读取签名
             signature = self.read_card_signature()
             if not signature:
                 return None
             
-            # Read Encrypted Blob (pages 18-85)
-            encrypted_blob = self.read_multiple_pages(18, 68)  # 272 bytes
+            # 读取加密数据块（第 18-85 页）
+            encrypted_blob = self.read_multiple_pages(18, 68)  # 272 字节
             if not encrypted_blob:
                 return None
             
-            # Read Share (pages 86-105)
-            share_data = self.read_multiple_pages(86, 20)  # 80 bytes
+            # 读取分片（第 86-105 页）
+            share_data = self.read_multiple_pages(86, 20)  # 80 字节
             if not share_data:
                 return None
             
-            # Decode share
+            # 解码分片
             share = share_data.rstrip(b'\x00').decode('utf-8', errors='ignore')
             
             return {
@@ -365,36 +365,36 @@ class NFCCardManager:
 
 
 class CryptoManager:
-    """Handles encryption and secret sharing operations"""
+    """处理加密和秘密共享操作"""
     
     @staticmethod
     def encrypt_mnemonic(mnemonic: str, key: bytes) -> bytes:
-        """Encrypt mnemonic using AES-256-GCM"""
-        # Generate random nonce
+        """使用 AES-256-GCM 加密助记词"""
+        # 生成随机 nonce
         nonce = get_random_bytes(12)
         
-        # Create cipher
+        # 创建加密器
         cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
         
-        # Encrypt
+        # 加密
         ciphertext, tag = cipher.encrypt_and_digest(mnemonic.encode('utf-8'))
         
-        # Return: nonce (12) + tag (16) + ciphertext
+        # 返回：nonce (12) + tag (16) + 密文
         return nonce + tag + ciphertext
     
     @staticmethod
     def decrypt_mnemonic(encrypted_blob: bytes, key: bytes) -> Optional[str]:
-        """Decrypt mnemonic using AES-256-GCM"""
+        """使用 AES-256-GCM 解密助记词"""
         try:
-            # Extract components
+            # 提取组件
             nonce = encrypted_blob[:12]
             tag = encrypted_blob[12:28]
             ciphertext = encrypted_blob[28:]
             
-            # Create cipher
+            # 创建加密器
             cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
             
-            # Decrypt and verify
+            # 解密和验证
             plaintext = cipher.decrypt_and_verify(ciphertext, tag)
             
             return plaintext.decode('utf-8')
@@ -403,12 +403,12 @@ class CryptoManager:
     
     @staticmethod
     def split_key(key: bytes, threshold: int = 3, shares: int = 5) -> List[str]:
-        """Split key using Shamir Secret Sharing"""
+        """使用 Shamir 秘密共享分片密钥"""
         return ShamirSecretSharing.split_secret(key, threshold, shares)
     
     @staticmethod
     def recover_key(shares: List[str]) -> Optional[bytes]:
-        """Recover key from shares"""
+        """从分片恢复密钥"""
         try:
             return ShamirSecretSharing.recover_secret(shares)
         except Exception:
@@ -416,22 +416,22 @@ class CryptoManager:
     
     @staticmethod
     def generate_key() -> bytes:
-        """Generate a random 256-bit AES key"""
+        """生成一个随机的 256 位 AES 密钥"""
         return get_random_bytes(32)
     
     @staticmethod
     def generate_card_id() -> bytes:
-        """Generate a random card ID"""
+        """生成一个随机的卡片 ID"""
         return get_random_bytes(16)
     
     @staticmethod
     def generate_challenge() -> bytes:
-        """Generate a random challenge"""
+        """生成一个随机的挑战值"""
         return get_random_bytes(32)
 
 
 class WebSocketHandler:
-    """Handles WebSocket connections and messages"""
+    """处理 WebSocket 连接和消息"""
     
     def __init__(self):
         self.state = InMemoryState()
@@ -440,7 +440,7 @@ class WebSocketHandler:
         self.ws_connections = set()
     
     async def handle_websocket(self, request):
-        """Handle WebSocket connection"""
+        """处理 WebSocket 连接"""
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         
@@ -454,13 +454,13 @@ class WebSocketHandler:
                     print(f'WebSocket error: {ws.exception()}')
         finally:
             self.ws_connections.discard(ws)
-            # Clear state when connection closes
+            # 连接关闭时清除状态
             self.state.clear()
         
         return ws
     
     async def handle_message(self, ws, data: str):
-        """Handle incoming WebSocket message"""
+        """处理传入的 WebSocket 消息"""
         try:
             message = json.loads(data)
             action = message.get('action')
@@ -484,23 +484,23 @@ class WebSocketHandler:
             await self.send_error(ws, f"Error: {str(e)}")
     
     async def handle_backup_start(self, ws, message):
-        """Initialize backup process"""
+        """初始化备份过程"""
         mnemonic = message.get('mnemonic', '').strip()
         
         if not mnemonic:
             await self.send_error(ws, "Mnemonic is required")
             return
         
-        # Generate AES key
+        # 生成 AES 密钥
         aes_key = self.crypto.generate_key()
         
-        # Encrypt mnemonic
+        # 加密助记词
         encrypted_blob = self.crypto.encrypt_mnemonic(mnemonic, aes_key)
         
-        # Split key into shares (3-of-5)
+        # 将密钥分片（3-of-5）
         shares = self.crypto.split_key(aes_key, threshold=3, shares=5)
         
-        # Store in memory
+        # 存储到内存
         self.state.mnemonic = mnemonic
         self.state.encrypted_blob = encrypted_blob
         self.state.aes_key = aes_key
@@ -514,7 +514,7 @@ class WebSocketHandler:
         })
     
     async def handle_backup_write_card(self, ws, message):
-        """Write data to NFC card"""
+        """将数据写入 NFC 卡"""
         card_number = message.get('card_number', 1)
         
         if not self.state.encrypted_blob or not self.state.shares:
@@ -525,20 +525,20 @@ class WebSocketHandler:
             await self.send_error(ws, "Invalid card number (must be 1-5)")
             return
         
-        # Connect to reader
+        # 连接到读卡器
         if not self.nfc.connect():
             await self.send_error(ws, "Failed to connect to NFC reader")
             return
         
         try:
-            # Generate card ID and challenge
+            # 生成卡片 ID 和挑战值
             card_id = self.crypto.generate_card_id()
             challenge = self.crypto.generate_challenge()
             
-            # Get share for this card
+            # 获取此卡的分片
             share = self.state.shares[card_number - 1]
             
-            # Write to card
+            # 写入卡片
             success = self.nfc.write_card_data(
                 card_number,
                 self.state.encrypted_blob,
@@ -548,7 +548,7 @@ class WebSocketHandler:
             )
             
             if success:
-                # Store card info
+                # 存储卡片信息
                 self.state.card_data[card_number] = {
                     'card_id': card_id.hex(),
                     'challenge': challenge.hex(),
@@ -568,8 +568,8 @@ class WebSocketHandler:
             self.nfc.disconnect()
     
     async def handle_recovery_start(self, ws, message):
-        """Initialize recovery process"""
-        # Clear previous recovery data
+        """初始化恢复过程"""
+        # 清除之前的恢复数据
         self.state.recovered_shares.clear()
         self.state.recovered_mnemonic = None
         
@@ -579,41 +579,41 @@ class WebSocketHandler:
         })
     
     async def handle_recovery_read_card(self, ws, message):
-        """Read data from NFC card for recovery"""
-        # Connect to reader
+        """从 NFC 卡读取数据进行恢复"""
+        # 连接到读卡器
         if not self.nfc.connect():
             await self.send_error(ws, "Failed to connect to NFC reader")
             return
         
         try:
-            # Read card data
+            # 读取卡片数据
             card_data = self.nfc.read_card_data()
             
             if not card_data:
                 await self.send_error(ws, "Failed to read card data")
                 return
             
-            # Check if this is a new card
+            # 检查是否为新卡
             changed, signature = self.nfc.is_card_changed()
             
             if not changed and len(self.state.recovered_shares) > 0:
                 await self.send_error(ws, "Same card detected - please insert a different card")
                 return
             
-            # Store encrypted blob if not yet stored
+            # 如果尚未存储，则存储加密数据块
             if not self.state.encrypted_blob:
                 self.state.encrypted_blob = card_data['encrypted_blob']
             
-            # Add share to recovered shares
+            # 将分片添加到已恢复的分片中
             share = card_data['share']
             if share and share not in self.state.recovered_shares:
                 self.state.recovered_shares.append(share)
             
             cards_read = len(self.state.recovered_shares)
             
-            # Check if we have enough shares
+            # 检查是否有足够的分片
             if cards_read >= 3:
-                # Attempt recovery
+                # 尝试恢复
                 recovered_key = self.crypto.recover_key(self.state.recovered_shares[:3])
                 
                 if recovered_key and self.state.encrypted_blob:
@@ -644,7 +644,7 @@ class WebSocketHandler:
             self.nfc.disconnect()
     
     async def handle_check_reader(self, ws, message):
-        """Check if NFC reader is available"""
+        """检查 NFC 读卡器是否可用"""
         connected = self.nfc.connect()
         if connected:
             self.nfc.disconnect()
@@ -655,11 +655,11 @@ class WebSocketHandler:
         })
     
     async def send_response(self, ws, data: dict):
-        """Send response to WebSocket client"""
+        """向 WebSocket 客户端发送响应"""
         await ws.send_json(data)
     
     async def send_error(self, ws, error: str):
-        """Send error to WebSocket client"""
+        """向 WebSocket 客户端发送错误"""
         await ws.send_json({
             'action': 'error',
             'error': error
@@ -667,25 +667,25 @@ class WebSocketHandler:
 
 
 async def create_app():
-    """Create and configure web application"""
+    """创建和配置 Web 应用"""
     app = web.Application()
     
     handler = WebSocketHandler()
     
-    # WebSocket endpoint
+    # WebSocket 端点
     app.router.add_get('/ws', handler.handle_websocket)
     
-    # Serve static files (frontend)
+    # 提供静态文件（前端）
     app.router.add_static('/', path='./static', name='static')
     
     return app
 
 
 def main():
-    """Main entry point"""
+    """主入口点"""
     app = create_app()
     
-    # Run on localhost only for security
+    # 仅在 localhost 上运行以确保安全
     web.run_app(app, host='127.0.0.1', port=8080)
 
 
