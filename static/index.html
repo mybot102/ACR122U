@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFC 助记词离线备份系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: #666;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            transition: border-color 0.3s;
+            resize: vertical;
+        }
+
+        textarea:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            min-height: 100px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            font-weight: 600;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .progress {
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .card-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .card-item {
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .card-item.pending {
+            background: #f5f5f5;
+        }
+
+        .card-item.completed {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+
+        .card-item.active {
+            background: #fff3cd;
+            border-color: #ffc107;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .card-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .card-status {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .info-box {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .info-box h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .info-box p, .info-box ul {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .info-box ul {
+            margin-left: 20px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .recovered-mnemonic {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            word-break: break-word;
+        }
+
+        .recovered-mnemonic h3 {
+            color: #155724;
+            margin-bottom: 10px;
+        }
+
+        .recovered-mnemonic .mnemonic-text {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            line-height: 1.8;
+            color: #155724;
+            user-select: all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 NFC 助记词离线备份系统</h1>
+        <p class="subtitle">使用 NTAG216 + ACR122U 进行安全的助记词分片备份</p>
+
+        <div class="connection-status">
+            <div class="status-dot" id="connectionDot"></div>
+            <span id="connectionText">连接中...</span>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('backup')">备份助记词</button>
+            <button class="tab" onclick="switchTab('recovery')">恢复助记词</button>
+            <button class="tab" onclick="switchTab('about')">系统说明</button>
+        </div>
+
+        <!-- Backup Tab -->
+        <div id="backup" class="tab-content active">
+            <div class="section">
+                <label for="mnemonicInput">输入助记词</label>
+                <textarea 
+                    id="mnemonicInput" 
+                    placeholder="请输入您的助记词（以空格分隔）&#10;例如：abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+                ></textarea>
+            </div>
+
+            <button id="startBackupBtn" onclick="startBackup()">开始备份</button>
+
+            <div id="backupProgress" style="display: none;">
+                <div class="progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="backupProgressFill" style="width: 0%;">0/5</div>
+                    </div>
+                </div>
+
+                <div class="card-list" id="cardList">
+                    <div class="card-item pending" id="card1">
+                        <div class="card-number">1</div>
+                        <div class="card-status">等待中</div>
+                    </div>
+                    <div class="card-item pending" id="card2">
+                        <div class="card-number">2</div>
+                        <div class="card-status">等待中</div>
+                    </div>
+                    <div class="card-item pending" id="card3">
+                        <div class="card-number">3</div>
+                        <div class="card-status">等待中</div>
+                    </div>
+                    <div class="card-item pending" id="card4">
+                        <div class="card-number">4</div>
+                        <div class="card-status">等待中</div>
+                    </div>
+                    <div class="card-item pending" id="card5">
+                        <div class="card-number">5</div>
+                        <div class="card-status">等待中</div>
+                    </div>
+                </div>
+
+                <button id="writeCardBtn" onclick="writeNextCard()" style="display: none;">
+                    写入卡片 <span id="currentCardNumber">1</span>
+                </button>
+            </div>
+
+            <div id="backupStatus" class="status"></div>
+        </div>
+
+        <!-- Recovery Tab -->
+        <div id="recovery" class="tab-content">
+            <div class="info-box">
+                <h3>恢复流程</h3>
+                <p>请依次放置 3 张或更多备份卡片到读卡器上。系统会自动读取并恢复您的助记词。</p>
+            </div>
+
+            <button id="startRecoveryBtn" onclick="startRecovery()">开始恢复</button>
+
+            <div id="recoveryProgress" style="display: none;">
+                <div class="progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="recoveryProgressFill" style="width: 0%;">0/3</div>
+                    </div>
+                </div>
+
+                <button id="readCardBtn" onclick="readNextCard()">
+                    读取卡片 <span id="recoveryCardCount">1</span>
+                </button>
+            </div>
+
+            <div id="recoveryStatus" class="status"></div>
+
+            <div id="recoveredMnemonic" class="recovered-mnemonic" style="display: none;">
+                <h3>✅ 恢复成功！</h3>
+                <div class="mnemonic-text" id="recoveredMnemonicText"></div>
+            </div>
+        </div>
+
+        <!-- About Tab -->
+        <div id="about" class="tab-content">
+            <div class="info-box">
+                <h3>系统概述</h3>
+                <p>本系统提供离线的 NFC 卡片助记词备份方案，具有以下特点：</p>
+                <ul>
+                    <li><strong>加密存储：</strong>使用 AES-256-GCM 加密助记词</li>
+                    <li><strong>分片备份：</strong>采用 Shamir 秘密共享（3-of-5）分片</li>
+                    <li><strong>内存驻留：</strong>数据仅存储在内存中，不写入磁盘</li>
+                    <li><strong>卡内识别：</strong>使用卡内数据（CardID + Counter + Challenge）识别卡片更换</li>
+                    <li><strong>本地运行：</strong>完全离线，WebSocket 仅监听 127.0.0.1</li>
+                </ul>
+            </div>
+
+            <div class="info-box">
+                <h3>硬件要求</h3>
+                <ul>
+                    <li><strong>NFC 卡片：</strong>NTAG216（推荐准备 7 张：5 张正式 + 2 张备用）</li>
+                    <li><strong>读写器：</strong>ACR122U（PC/SC 协议）</li>
+                    <li><strong>测试：</strong>可使用 NTAG215 进行测试（容量较小）</li>
+                </ul>
+            </div>
+
+            <div class="info-box">
+                <h3>数据结构</h3>
+                <p>每张 NFC 卡存储以下数据：</p>
+                <ul>
+                    <li><strong>CardID：</strong>16 字节卡片标识符（Pages 4-7）</li>
+                    <li><strong>Counter：</strong>8 字节计数器（Pages 8-9）</li>
+                    <li><strong>Challenge：</strong>32 字节挑战值（Pages 10-17）</li>
+                    <li><strong>Encrypted Blob：</strong>加密的助记词（Pages 18-85，最大 272 字节）</li>
+                    <li><strong>Share：</strong>密钥分片（Pages 86-105，最大 80 字节）</li>
+                </ul>
+            </div>
+
+            <div class="info-box">
+                <h3>安全特性</h3>
+                <ul>
+                    <li>助记词使用 AES-256-GCM 加密</li>
+                    <li>加密密钥通过 Shamir 秘密共享拆分为 5 份</li>
+                    <li>需要任意 3 张卡片才能恢复助记词</li>
+                    <li>所有敏感数据仅存储在内存中</li>
+                    <li>WebSocket 断开或服务重启时自动清空数据</li>
+                    <li>不依赖 UID，使用卡内数据识别</li>
+                </ul>
+            </div>
+
+            <div class="info-box">
+                <h3>使用建议</h3>
+                <ul>
+                    <li>将 5 张备份卡分散存放在不同的安全位置</li>
+                    <li>定期检查卡片的可读性</li>
+                    <li>妥善保管，避免卡片物理损坏</li>
+                    <li>使用前确保系统完全离线</li>
+                    <li>备份完成后清空浏览器缓存和历史记录</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentCardIndex = 0;
+        let totalCards = 5;
+        let recoveryCardCount = 0;
+        let requiredCards = 3;
+
+        // WebSocket connection
+        function connect() {
+            ws = new WebSocket('ws://127.0.0.1:8080/ws');
+
+            ws.onopen = () => {
+                updateConnectionStatus(true);
+                checkReader();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus(false);
+            };
+
+            ws.onclose = () => {
+                updateConnectionStatus(false);
+                setTimeout(connect, 3000); // Reconnect after 3 seconds
+            };
+        }
+
+        function updateConnectionStatus(connected) {
+            const dot = document.getElementById('connectionDot');
+            const text = document.getElementById('connectionText');
+            
+            if (connected) {
+                dot.classList.add('connected');
+                text.textContent = '已连接到服务器';
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = '连接已断开，正在重连...';
+            }
+        }
+
+        function checkReader() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'check_reader' }));
+            }
+        }
+
+        function handleMessage(data) {
+            console.log('Received:', data);
+
+            switch (data.action) {
+                case 'backup_initialized':
+                    onBackupInitialized(data);
+                    break;
+                case 'card_written':
+                    onCardWritten(data);
+                    break;
+                case 'recovery_initialized':
+                    onRecoveryInitialized(data);
+                    break;
+                case 'card_read':
+                    onCardRead(data);
+                    break;
+                case 'recovery_complete':
+                    onRecoveryComplete(data);
+                    break;
+                case 'reader_status':
+                    onReaderStatus(data);
+                    break;
+                case 'error':
+                    showStatus(data.error, 'error', data.action === 'card_read' ? 'recoveryStatus' : 'backupStatus');
+                    break;
+            }
+        }
+
+        function switchTab(tabName) {
+            // Update tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Backup functions
+        function startBackup() {
+            const mnemonic = document.getElementById('mnemonicInput').value.trim();
+            
+            if (!mnemonic) {
+                showStatus('请输入助记词', 'error', 'backupStatus');
+                return;
+            }
+
+            // Send to server
+            ws.send(JSON.stringify({
+                action: 'backup_start',
+                mnemonic: mnemonic
+            }));
+
+            document.getElementById('startBackupBtn').disabled = true;
+            showStatus('正在初始化备份...', 'info', 'backupStatus');
+        }
+
+        function onBackupInitialized(data) {
+            totalCards = data.total_cards;
+            currentCardIndex = 0;
+
+            document.getElementById('backupProgress').style.display = 'block';
+            document.getElementById('writeCardBtn').style.display = 'block';
+            
+            showStatus('备份已初始化，请准备 ' + totalCards + ' 张 NFC 卡片', 'success', 'backupStatus');
+            
+            // Highlight first card
+            document.getElementById('card1').classList.add('active');
+            document.getElementById('card1').querySelector('.card-status').textContent = '准备写入';
+        }
+
+        function writeNextCard() {
+            if (currentCardIndex >= totalCards) {
+                return;
+            }
+
+            const cardNumber = currentCardIndex + 1;
+            
+            // Update UI
+            document.getElementById('currentCardNumber').textContent = cardNumber;
+            document.getElementById('writeCardBtn').disabled = true;
+            
+            showStatus('请将第 ' + cardNumber + ' 张卡片放置在读卡器上...', 'info', 'backupStatus');
+
+            // Send request
+            ws.send(JSON.stringify({
+                action: 'backup_write_card',
+                card_number: cardNumber
+            }));
+        }
+
+        function onCardWritten(data) {
+            const cardNumber = data.card_number;
+            const cardElement = document.getElementById('card' + cardNumber);
+            
+            // Update card status
+            cardElement.classList.remove('active', 'pending');
+            cardElement.classList.add('completed');
+            cardElement.querySelector('.card-status').textContent = '已完成';
+
+            currentCardIndex++;
+
+            // Update progress
+            const progress = (currentCardIndex / totalCards) * 100;
+            document.getElementById('backupProgressFill').style.width = progress + '%';
+            document.getElementById('backupProgressFill').textContent = currentCardIndex + '/' + totalCards;
+
+            if (currentCardIndex < totalCards) {
+                // Highlight next card
+                const nextCard = document.getElementById('card' + (currentCardIndex + 1));
+                nextCard.classList.add('active');
+                nextCard.querySelector('.card-status').textContent = '准备写入';
+
+                showStatus('卡片 ' + cardNumber + ' 写入成功！请取下卡片并放置下一张', 'success', 'backupStatus');
+                document.getElementById('writeCardBtn').disabled = false;
+            } else {
+                showStatus('✅ 所有卡片写入完成！备份成功！', 'success', 'backupStatus');
+                document.getElementById('writeCardBtn').style.display = 'none';
+            }
+        }
+
+        // Recovery functions
+        function startRecovery() {
+            ws.send(JSON.stringify({
+                action: 'recovery_start'
+            }));
+
+            document.getElementById('startRecoveryBtn').disabled = true;
+            document.getElementById('recoveryProgress').style.display = 'block';
+            document.getElementById('recoveredMnemonic').style.display = 'none';
+            recoveryCardCount = 0;
+
+            showStatus('恢复流程已启动，请放置第 1 张卡片', 'info', 'recoveryStatus');
+        }
+
+        function onRecoveryInitialized(data) {
+            requiredCards = data.required_cards;
+            showStatus('请将第 1 张卡片放置在读卡器上', 'info', 'recoveryStatus');
+        }
+
+        function readNextCard() {
+            document.getElementById('readCardBtn').disabled = true;
+            
+            ws.send(JSON.stringify({
+                action: 'recovery_read_card'
+            }));
+
+            showStatus('正在读取卡片...', 'info', 'recoveryStatus');
+        }
+
+        function onCardRead(data) {
+            recoveryCardCount = data.cards_read;
+            const progress = (recoveryCardCount / requiredCards) * 100;
+            
+            document.getElementById('recoveryProgressFill').style.width = progress + '%';
+            document.getElementById('recoveryProgressFill').textContent = recoveryCardCount + '/' + requiredCards;
+            document.getElementById('recoveryCardCount').textContent = recoveryCardCount + 1;
+
+            if (recoveryCardCount < requiredCards) {
+                showStatus('已读取 ' + recoveryCardCount + ' 张卡片，请取下当前卡片并放置下一张', 'success', 'recoveryStatus');
+                document.getElementById('readCardBtn').disabled = false;
+            }
+        }
+
+        function onRecoveryComplete(data) {
+            document.getElementById('recoveryProgressFill').style.width = '100%';
+            document.getElementById('recoveryProgressFill').textContent = '完成';
+            
+            showStatus('✅ 恢复成功！', 'success', 'recoveryStatus');
+            
+            document.getElementById('recoveredMnemonic').style.display = 'block';
+            document.getElementById('recoveredMnemonicText').textContent = data.mnemonic;
+            document.getElementById('readCardBtn').style.display = 'none';
+        }
+
+        function onReaderStatus(data) {
+            if (!data.available) {
+                showStatus('⚠️ 未检测到 NFC 读卡器，请确保 ACR122U 已连接', 'warning', 'backupStatus');
+            }
+        }
+
+        function showStatus(message, type, elementId) {
+            const statusElement = document.getElementById(elementId);
+            statusElement.textContent = message;
+            statusElement.className = 'status show ' + type;
+        }
+
+        // Initialize
+        connect();
+    </script>
+</body>
+</html>
