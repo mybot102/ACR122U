@@ -32,8 +32,8 @@
 | CardID | 4-7 | 16 bytes | 卡片唯一标识符 |
 | Counter | 8-9 | 8 bytes | 写入时间戳计数器 |
 | Challenge | 10-17 | 32 bytes | 随机挑战值 |
-| Encrypted Blob | 18-49 | 128 bytes | AES 加密的助记词 |
-| Share | 50-65 | 64 bytes | Shamir 密钥分片 |
+| Encrypted Blob | 18-85 | 272 bytes | AES 加密的助记词 |
+| Share | 86-105 | 80 bytes | Shamir 密钥分片 |
 
 ## 🚀 快速开始
 
@@ -368,8 +368,8 @@ abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon 
 4. 写入 CardID (Pages 4-7)
 5. 写入 Counter (Pages 8-9)
 6. 写入 Challenge (Pages 10-17)
-7. 写入 Encrypted Blob (Pages 18-49)
-8. 写入 Share (Pages 50-65)
+7. 写入 Encrypted Blob (Pages 18-85)
+8. 写入 Share (Pages 86-105)
 ```
 
 ### 卡片识别机制

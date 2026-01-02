@@ -1,4 +1,3 @@
 aiohttp==3.9.1
 pycryptodome==3.19.0
 pyscard==2.0.7
-secretsharing==0.2.7

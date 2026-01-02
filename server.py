@@ -23,11 +23,111 @@ import aiohttp
 from Crypto.Cipher import AES
 from Crypto.Protocol.KDF import PBKDF2
 from Crypto.Random import get_random_bytes
-from secretsharing import SecretSharer
+import random
 
 from smartcard.System import readers
 from smartcard.util import toHexString, toBytes
 from smartcard.Exceptions import NoCardException, CardConnectionException
+
+
+class ShamirSecretSharing:
+    """Simple Shamir Secret Sharing implementation"""
+    
+    # Large prime for finite field arithmetic (256-bit prime)
+    PRIME = 2**256 - 189
+    
+    @staticmethod
+    def _eval_at(poly: List[int], x: int, prime: int) -> int:
+        """Evaluate polynomial at x using Horner's method"""
+        accum = 0
+        for coeff in reversed(poly):
+            accum = (accum * x + coeff) % prime
+        return accum
+    
+    @staticmethod
+    def _lagrange_interpolate(x: int, x_s: List[int], y_s: List[int], prime: int) -> int:
+        """Lagrange interpolation at x"""
+        k = len(x_s)
+        result = 0
+        
+        for i in range(k):
+            numerator = 1
+            denominator = 1
+            
+            for j in range(k):
+                if i != j:
+                    numerator = (numerator * (x - x_s[j])) % prime
+                    denominator = (denominator * (x_s[i] - x_s[j])) % prime
+            
+            # Calculate modular inverse of denominator
+            denominator_inv = pow(denominator, prime - 2, prime)
+            
+            # Add this term to result
+            lagrange_coeff = (numerator * denominator_inv) % prime
+            result = (result + y_s[i] * lagrange_coeff) % prime
+        
+        return result
+    
+    @classmethod
+    def split_secret(cls, secret: bytes, threshold: int, num_shares: int) -> List[str]:
+        """Split secret into shares"""
+        if threshold > num_shares:
+            raise ValueError("Threshold cannot be greater than number of shares")
+        if threshold < 2:
+            raise ValueError("Threshold must be at least 2")
+        
+        # Convert secret to integer
+        secret_int = int.from_bytes(secret, byteorder='big')
+        
+        if secret_int >= cls.PRIME:
+            raise ValueError("Secret is too large")
+        
+        # Generate random polynomial coefficients
+        # polynomial: a0 + a1*x + a2*x^2 + ... + a(t-1)*x^(t-1)
+        # where a0 = secret
+        poly = [secret_int]
+        for _ in range(threshold - 1):
+            coeff = random.SystemRandom().randrange(1, cls.PRIME)
+            poly.append(coeff)
+        
+        # Generate shares by evaluating polynomial at x = 1, 2, 3, ..., num_shares
+        shares = []
+        for x in range(1, num_shares + 1):
+            y = cls._eval_at(poly, x, cls.PRIME)
+            # Format: x:y (both in hex)
+            share_str = f"{x:02x}:{y:064x}"
+            shares.append(share_str)
+        
+        return shares
+    
+    @classmethod
+    def recover_secret(cls, shares: List[str]) -> bytes:
+        """Recover secret from shares"""
+        if len(shares) < 2:
+            raise ValueError("At least 2 shares required")
+        
+        # Parse shares
+        x_s = []
+        y_s = []
+        
+        for share in shares:
+            parts = share.split(':')
+            if len(parts) != 2:
+                raise ValueError("Invalid share format")
+            
+            x = int(parts[0], 16)
+            y = int(parts[1], 16)
+            
+            x_s.append(x)
+            y_s.append(y)
+        
+        # Recover secret using Lagrange interpolation at x=0
+        secret_int = cls._lagrange_interpolate(0, x_s, y_s, cls.PRIME)
+        
+        # Convert back to bytes (32 bytes = 256 bits)
+        secret = secret_int.to_bytes(32, byteorder='big')
+        
+        return secret
 
 
 class InMemoryState:
@@ -65,8 +165,8 @@ class NFCCardManager:
     # Pages 4-7: CardID (16 bytes)
     # Pages 8-9: Counter (8 bytes)
     # Pages 10-17: Challenge (32 bytes)
-    # Pages 18-49: Encrypted Blob (128 bytes max)
-    # Pages 50-65: Share data (64 bytes max)
+    # Pages 18-85: Encrypted Blob (272 bytes max - enough for 24-word mnemonic)
+    # Pages 86-105: Share data (80 bytes max)
     
     def __init__(self):
         self.connection = None
@@ -220,14 +320,14 @@ class NFCCardManager:
             if not self.write_multiple_pages(10, challenge[:32]):
                 return False
             
-            # Write Encrypted Blob (pages 18-49, max 128 bytes)
-            blob_to_write = encrypted_blob[:128]
+            # Write Encrypted Blob (pages 18-85, max 272 bytes)
+            blob_to_write = encrypted_blob[:272]
             if not self.write_multiple_pages(18, blob_to_write):
                 return False
             
-            # Write Share (pages 50-65, max 64 bytes)
-            share_bytes = share.encode('utf-8')[:64]
-            if not self.write_multiple_pages(50, share_bytes):
+            # Write Share (pages 86-105, max 80 bytes)
+            share_bytes = share.encode('utf-8')[:80]
+            if not self.write_multiple_pages(86, share_bytes):
                 return False
             
             return True
@@ -245,13 +345,13 @@ class NFCCardManager:
             if not signature:
                 return None
             
-            # Read Encrypted Blob (pages 18-49)
-            encrypted_blob = self.read_multiple_pages(18, 32)  # 128 bytes
+            # Read Encrypted Blob (pages 18-85)
+            encrypted_blob = self.read_multiple_pages(18, 68)  # 272 bytes
             if not encrypted_blob:
                 return None
             
-            # Read Share (pages 50-65)
-            share_data = self.read_multiple_pages(50, 16)  # 64 bytes
+            # Read Share (pages 86-105)
+            share_data = self.read_multiple_pages(86, 20)  # 80 bytes
             if not share_data:
                 return None
             
@@ -307,23 +407,13 @@ class CryptoManager:
     @staticmethod
     def split_key(key: bytes, threshold: int = 3, shares: int = 5) -> List[str]:
         """Split key using Shamir Secret Sharing"""
-        # Convert key to hex string for secretsharing
-        key_hex = key.hex()
-        
-        # Create shares
-        shares_list = SecretSharer.split_secret(key_hex, threshold, shares)
-        
-        return shares_list
+        return ShamirSecretSharing.split_secret(key, threshold, shares)
     
     @staticmethod
     def recover_key(shares: List[str]) -> Optional[bytes]:
         """Recover key from shares"""
         try:
-            # Recover hex string
-            key_hex = SecretSharer.recover_secret(shares)
-            
-            # Convert back to bytes
-            return bytes.fromhex(key_hex)
+            return ShamirSecretSharing.recover_secret(shares)
         except Exception:
             return None
     
